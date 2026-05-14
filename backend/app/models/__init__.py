@@ -9,6 +9,7 @@ from app.models.imports import ImportBatch, ImportMapping
 from app.models.energy import HomeEnergySample
 from app.models.integration import Integration
 from app.models.user import User, ApiKey
+from app.models.app_setting import AppSetting
 
 __all__ = [
     "Vehicle", "VehicleSnapshot", "ProviderEvent",
@@ -22,4 +23,5 @@ __all__ = [
     "HomeEnergySample",
     "Integration",
     "User", "ApiKey",
+    "AppSetting",
 ]

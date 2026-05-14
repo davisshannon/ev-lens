@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, vehicles, tariffs, charges, battery, alerts, ai, imports, integrations, auth
+from app.api import health, vehicles, tariffs, charges, battery, alerts, ai, imports, integrations, auth, app_settings
 from app.config import settings
 
 logging.basicConfig(level=settings.log_level.upper())
@@ -18,7 +18,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.workers.poller import start_poller
     from app.workers.energy_poller import start_energy_poller
     from app.services.first_run import maybe_create_admin
+    from app.services.settings_store import load_settings_from_db
+    from app.db import AsyncSessionLocal
     await maybe_create_admin()
+    async with AsyncSessionLocal() as db:
+        await load_settings_from_db(db)
     tasks = [
         asyncio.create_task(start_poller()),
         asyncio.create_task(start_energy_poller()),
@@ -57,3 +61,4 @@ app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(imports.router, prefix="/api/v1/imports", tags=["imports"])
 app.include_router(integrations.router, prefix="/api/v1/integrations", tags=["integrations"])
+app.include_router(app_settings.router, prefix="/api/v1/app-settings", tags=["app-settings"])
