@@ -26,5 +26,14 @@ class Settings(BaseSettings):
     log_level: str = "info"
     app_version: str = "0.1.0"
 
+    # AI providers (all optional — first one set wins)
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    xai_api_key: str = ""
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_region: str = "us-east-1"
+    ai_model_override: str = ""  # override default model for whichever provider is active
+
 
 settings = Settings()  # type: ignore[call-arg]

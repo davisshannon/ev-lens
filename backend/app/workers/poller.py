@@ -18,6 +18,7 @@ from app.models.vehicle import Vehicle, VehicleSnapshot, ProviderEvent
 from app.security.encryption import decrypt, encrypt
 from app.services.charging.detector import detect_sessions
 from app.services.providers.tesla import TeslaAuthService, TeslaProvider
+from app.workers.battery_worker import run_battery_analysis
 
 log = logging.getLogger(__name__)
 
@@ -134,6 +135,9 @@ async def _poll_vehicle(provider: TeslaProvider, vehicle: Vehicle, db: AsyncSess
 
         # Run session detector over the last 2 hours of snapshots after each poll
         await _run_session_detector(vehicle, db)
+
+        # Run battery health estimator and anomaly detectors
+        await run_battery_analysis(vehicle.id, db)
 
     except Exception as exc:
         log.warning("Poll failed for vehicle %s: %s", vehicle.id, exc)

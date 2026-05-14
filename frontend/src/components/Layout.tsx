@@ -8,7 +8,9 @@ const NAV_ITEMS = [
   { to: "/drives", label: "Drives" },
   { to: "/costs", label: "Costs" },
   { to: "/alerts", label: "Alerts" },
+  { to: "/assistant", label: "Assistant" },
   { to: "/settings", label: "Settings" },
+  { to: "/imports", label: "Import" },
 ];
 
 export function Layout() {

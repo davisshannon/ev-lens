@@ -29,3 +29,4 @@ frontend/.vite/
 
 # Docker volumes (if mounted locally)
 postgres_data/
+bridge/.wrangler/
