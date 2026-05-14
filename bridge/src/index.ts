@@ -36,7 +36,23 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/") return homePage();
-    if (url.pathname === "/health") return new Response("ok", { status: 200 });
+    if (url.pathname === "/health") {
+      const missing = [];
+      if (!env.BRIDGE_SECRET) missing.push("BRIDGE_SECRET");
+      if (!env.TESLA_CLIENT_ID) missing.push("TESLA_CLIENT_ID");
+      if (missing.length) {
+        return new Response(`missing secrets: ${missing.join(", ")}`, { status: 500 });
+      }
+      return new Response("ok", { status: 200 });
+    }
+
+    if (!env.BRIDGE_SECRET) {
+      return errorPage("BRIDGE_SECRET is not set. Add it as a Secret in the Cloudflare Workers dashboard, then redeploy.");
+    }
+    if (!env.TESLA_CLIENT_ID) {
+      return errorPage("TESLA_CLIENT_ID is not set. Add it as a Secret in the Cloudflare Workers dashboard, then redeploy.");
+    }
+
     if (url.pathname === "/authorize") return handleAuthorize(url, env);
     if (url.pathname === "/callback") return handleCallback(url, env);
 
