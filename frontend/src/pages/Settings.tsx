@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAssignTariff, useCreateTariff, useDeleteTariff, useTariffs } from "../hooks/useCharges";
+import { useVehicles } from "../hooks/useVehicles";
+import type { Tariff } from "../types/charge";
 
 interface Integration {
   id: string;
@@ -195,15 +198,253 @@ export function SettingsPage() {
         )}
       </section>
 
-      {/* Tariffs placeholder */}
-      <section className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+      {/* Tariffs */}
+      <TariffSection />
+    </div>
+  );
+}
+
+const PRESET_CONFIGS: Record<string, { label: string; config: object }> = {
+  flat: {
+    label: "Flat rate",
+    config: { type: "flat", rate: 0.12 },
+  },
+  tou: {
+    label: "Time-of-Use",
+    config: {
+      type: "tou",
+      windows: [
+        { name: "off-peak", start: "21:00", end: "07:00", rate: 0.08 },
+        { name: "peak", start: "07:00", end: "21:00", rate: 0.24 },
+      ],
+    },
+  },
+  ev_night: {
+    label: "EV Night (overnight discount)",
+    config: {
+      type: "ev_night",
+      night_start: "23:00",
+      night_end: "07:00",
+      night_rate: 0.07,
+      day_rate: 0.22,
+    },
+  },
+};
+
+function TariffSection() {
+  const { data: tariffs } = useTariffs();
+  const { data: vehicles } = useVehicles();
+  const createTariff = useCreateTariff();
+  const deleteTariff = useDeleteTariff();
+  const assignTariff = useAssignTariff();
+
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [timezone, setTimezone] = useState(
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+  );
+  const [preset, setPreset] = useState<keyof typeof PRESET_CONFIGS>("flat");
+  const [rawConfig, setRawConfig] = useState(
+    JSON.stringify(PRESET_CONFIGS.flat.config, null, 2)
+  );
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function handlePresetChange(p: keyof typeof PRESET_CONFIGS) {
+    setPreset(p);
+    setRawConfig(JSON.stringify(PRESET_CONFIGS[p].config, null, 2));
+    setConfigError(null);
+  }
+
+  async function handleAdd() {
+    setFormError(null);
+    setConfigError(null);
+    let config: object;
+    try {
+      config = JSON.parse(rawConfig);
+    } catch {
+      setConfigError("Invalid JSON");
+      return;
+    }
+    if (!name.trim()) {
+      setFormError("Name is required");
+      return;
+    }
+    try {
+      await createTariff.mutateAsync({ name: name.trim(), currency, timezone, config });
+      setAdding(false);
+      setName("");
+      setRawConfig(JSON.stringify(PRESET_CONFIGS.flat.config, null, 2));
+    } catch {
+      setFormError("Failed to create tariff");
+    }
+  }
+
+  return (
+    <section className="rounded-xl bg-gray-900 border border-gray-800 p-5 space-y-4">
+      <div className="flex items-center justify-between">
         <h2 className="text-base font-medium text-gray-200">Tariffs</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Configure electricity pricing for charge cost estimates and planning.
-          Use the API at <code className="text-xs bg-gray-800 px-1 rounded">/api/v1/tariffs</code> or
-          the full tariff UI coming in M3.
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors"
+          >
+            + Add tariff
+          </button>
+        )}
+      </div>
+
+      {tariffs && tariffs.length > 0 && (
+        <div className="space-y-2">
+          {tariffs.map((t) => (
+            <TariffRow
+              key={t.id}
+              tariff={t}
+              vehicles={vehicles ?? []}
+              onDelete={() => deleteTariff.mutate(t.id)}
+              onAssign={(vehicleId) => assignTariff.mutate({ tariffId: t.id, vehicleId })}
+            />
+          ))}
+        </div>
+      )}
+
+      {!tariffs?.length && !adding && (
+        <p className="text-sm text-gray-500">
+          No tariffs configured. Add one to enable cost estimates and smart charging.
         </p>
-      </section>
+      )}
+
+      {adding && (
+        <div className="border border-gray-700 rounded-lg p-4 space-y-3">
+          <p className="text-sm font-medium text-gray-300">New Tariff</p>
+
+          {formError && <ErrorBox message={formError} />}
+
+          <input
+            type="text"
+            placeholder="Name (e.g. Home TOU)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-lg bg-gray-800 border border-gray-700 text-gray-200 text-sm px-3 py-2"
+          />
+
+          <div className="flex gap-2">
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="flex-1 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 text-sm px-3 py-2"
+            >
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+              <option value="CAD">CAD</option>
+              <option value="AUD">AUD</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Timezone"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              className="flex-1 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 text-sm px-3 py-2"
+            />
+          </div>
+
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Preset</p>
+            <div className="flex gap-1 flex-wrap">
+              {Object.entries(PRESET_CONFIGS).map(([key, p]) => (
+                <button
+                  key={key}
+                  onClick={() => handlePresetChange(key as keyof typeof PRESET_CONFIGS)}
+                  className={`px-2 py-1 rounded text-xs transition-colors ${
+                    preset === key
+                      ? "bg-brand-500 text-white"
+                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Config JSON</p>
+            <textarea
+              value={rawConfig}
+              onChange={(e) => { setRawConfig(e.target.value); setConfigError(null); }}
+              rows={8}
+              className="w-full rounded-lg bg-gray-800 border border-gray-700 text-gray-200 text-xs px-3 py-2 font-mono resize-y"
+            />
+            {configError && <p className="text-xs text-red-400 mt-1">{configError}</p>}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleAdd}
+              disabled={createTariff.isPending}
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500/90 disabled:opacity-50"
+            >
+              {createTariff.isPending ? "Saving…" : "Save Tariff"}
+            </button>
+            <button
+              onClick={() => { setAdding(false); setFormError(null); }}
+              className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-400 hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+interface Vehicle { id: string; display_name: string | null; model: string | null; }
+
+function TariffRow({
+  tariff,
+  vehicles,
+  onDelete,
+  onAssign,
+}: {
+  tariff: Tariff;
+  vehicles: Vehicle[];
+  onDelete: () => void;
+  onAssign: (vehicleId: string) => void;
+}) {
+  const configType = (tariff.config as { type?: string }).type ?? "custom";
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-200 truncate">{tariff.name}</p>
+        <p className="text-xs text-gray-500">
+          {configType} · {tariff.currency} · {tariff.timezone}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+        {vehicles.length > 0 && (
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) onAssign(e.target.value); e.target.value = ""; }}
+            className="text-xs bg-gray-700 border border-gray-600 text-gray-300 rounded px-2 py-1"
+          >
+            <option value="" disabled>Assign…</option>
+            {vehicles.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.display_name ?? v.model ?? "Vehicle"}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          onClick={onDelete}
+          className="text-xs text-gray-500 hover:text-red-400 transition-colors px-1"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 }

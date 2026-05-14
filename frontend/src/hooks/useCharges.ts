@@ -35,3 +35,28 @@ export function useTariffs() {
     staleTime: 300_000,
   });
 }
+
+export function useCreateTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: chargesApi.createTariff,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tariffs"] }),
+  });
+}
+
+export function useDeleteTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: chargesApi.deleteTariff,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tariffs"] }),
+  });
+}
+
+export function useAssignTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tariffId, vehicleId }: { tariffId: string; vehicleId: string }) =>
+      chargesApi.assignTariff(tariffId, vehicleId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tariffs"] }),
+  });
+}

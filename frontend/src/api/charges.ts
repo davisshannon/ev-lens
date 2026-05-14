@@ -20,4 +20,15 @@ export const chargesApi = {
     api.get(`/charges/${vehicleId}/plans/${planId}/report`).then((r) => r.data),
 
   tariffs: () => api.get<Tariff[]>("/tariffs").then((r) => r.data),
+
+  createTariff: (body: Omit<Tariff, "id">) =>
+    api.post<Tariff>("/tariffs", body).then((r) => r.data),
+
+  updateTariff: (tariffId: string, body: Omit<Tariff, "id">) =>
+    api.put<Tariff>(`/tariffs/${tariffId}`, body).then((r) => r.data),
+
+  deleteTariff: (tariffId: string) => api.delete(`/tariffs/${tariffId}`),
+
+  assignTariff: (tariffId: string, vehicleId: string) =>
+    api.post(`/tariffs/${tariffId}/assign/${vehicleId}`).then((r) => r.data),
 };

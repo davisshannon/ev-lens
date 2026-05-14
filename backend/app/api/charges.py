@@ -1,5 +1,6 @@
 import uuid
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -10,6 +11,7 @@ from app.db import get_db
 from app.models.charge import ChargePlan, ChargeSession
 from app.models.tariff import Tariff, VehicleTariffAssignment
 from app.models.vehicle import Vehicle
+from app.schemas.battery import CostSummaryOut
 from app.schemas.charge import ChargePlanOut, ChargePlanRequest, ChargeSessionOut, PostChargeReportOut
 from app.services.charging.planner import PlanInput, build_post_charge_report, plan_charge
 
@@ -146,6 +148,61 @@ async def get_post_charge_report(
         actual_kwh=float(plan.actual_kwh),
         actual_cost=float(plan.actual_cost or 0),
     )
+
+
+@router.get("/{vehicle_id}/costs", response_model=list[CostSummaryOut])
+async def get_cost_summary(
+    vehicle_id: uuid.UUID,
+    months: int = 6,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_auth),
+) -> list[CostSummaryOut]:
+    since = datetime.now(timezone.utc) - timedelta(days=min(months, 24) * 31)
+    result = await db.execute(
+        select(ChargeSession)
+        .where(
+            ChargeSession.vehicle_id == vehicle_id,
+            ChargeSession.invalid.is_(False),
+            ChargeSession.started_at >= since,
+        )
+        .order_by(ChargeSession.started_at)
+    )
+    sessions = list(result.scalars().all())
+
+    # Group by YYYY-MM
+    by_month: dict[str, list[ChargeSession]] = defaultdict(list)
+    for s in sessions:
+        key = s.started_at.strftime("%Y-%m")
+        by_month[key].append(s)
+
+    summaries: list[CostSummaryOut] = []
+    for period in sorted(by_month.keys()):
+        month_sessions = by_month[period]
+        total_cost = sum(float(s.cost_estimated or 0) for s in month_sessions)
+        total_kwh = sum(
+            float(s.wall_kwh_actual or s.wall_kwh_estimated or s.battery_kwh_added or 0)
+            for s in month_sessions
+        )
+        solar_kwh = sum(float(s.solar_kwh or 0) for s in month_sessions)
+        grid_kwh = sum(float(s.grid_kwh or 0) for s in month_sessions)
+        currency = next(
+            (s.cost_currency for s in month_sessions if s.cost_currency), "USD"
+        )
+        summaries.append(
+            CostSummaryOut(
+                period=period,
+                total_cost=round(total_cost, 4),
+                total_kwh=round(total_kwh, 3),
+                currency=currency,
+                session_count=len(month_sessions),
+                avg_cost_per_kwh=round(total_cost / total_kwh, 4) if total_kwh > 0 else None,
+                avg_cost_per_100km=None,  # requires drive distance correlation
+                solar_kwh=round(solar_kwh, 3),
+                grid_kwh=round(grid_kwh, 3),
+                solar_pct=round(solar_kwh / total_kwh * 100, 1) if total_kwh > 0 else 0.0,
+            )
+        )
+    return summaries
 
 
 async def _get_vehicle(vehicle_id: uuid.UUID, db: AsyncSession) -> Vehicle:
