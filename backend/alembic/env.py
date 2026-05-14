@@ -10,7 +10,11 @@ from app.db import Base
 import app.models  # noqa: F401 — ensure all models are registered
 
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"].replace("+asyncpg", "+psycopg2", 1))
+# Keep asyncpg for the async migration runner; ensure the scheme is set correctly
+db_url = os.environ["DATABASE_URL"]
+if not db_url.startswith("postgresql+asyncpg"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1).replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
