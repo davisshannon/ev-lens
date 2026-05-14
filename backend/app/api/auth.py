@@ -21,6 +21,53 @@ from app.services.providers.tesla import TeslaAuthService, TeslaProvider
 router = APIRouter()
 _auth_service = TeslaAuthService()
 
+
+class SetupRequest(BaseModel):
+    username: str
+    password: str
+
+
+class SetupStatusOut(BaseModel):
+    needs_setup: bool
+    bridge_secret: str | None  # exposed only during setup so user can sync with Cloudflare
+
+
+@router.get("/setup-status", response_model=SetupStatusOut)
+async def setup_status(db: AsyncSession = Depends(get_db)) -> SetupStatusOut:
+    result = await db.execute(select(User))
+    has_users = result.scalar_one_or_none() is not None
+    return SetupStatusOut(
+        needs_setup=not has_users,
+        bridge_secret=settings.secret_key if not has_users else None,
+    )
+
+
+@router.post("/setup", response_model=Token)
+async def setup(body: SetupRequest, db: AsyncSession = Depends(get_db)) -> Token:
+    """First-run setup — only works when no users exist."""
+    result = await db.execute(select(User))
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Setup already complete. Use /token to log in.",
+        )
+    if len(body.password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must be at least 8 characters.",
+        )
+
+    from app.security.auth import hash_password
+    admin = User(
+        username=body.username.strip(),
+        hashed_password=hash_password(body.password),
+        is_active=True,
+        is_admin=True,
+    )
+    db.add(admin)
+    await db.commit()
+    return Token(access_token=create_access_token(str(admin.id)))
+
 # In-memory state store (single-instance only; replace with Redis for multi-instance)
 _pending_states: dict[str, float] = {}
 STATE_TTL_S = 600  # 10 min to complete OAuth
