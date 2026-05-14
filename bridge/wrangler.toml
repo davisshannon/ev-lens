@@ -1,4 +1,4 @@
-name = "ev-lens-bridge"
+name = "ev-lens"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
