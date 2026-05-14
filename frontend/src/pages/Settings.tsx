@@ -204,7 +204,7 @@ export function SettingsPage() {
   );
 }
 
-const PRESET_CONFIGS: Record<string, { label: string; config: object }> = {
+const PRESET_CONFIGS: Record<string, { label: string; config: Record<string, unknown> }> = {
   flat: {
     label: "Flat rate",
     config: { type: "flat", rate: 0.12 },
@@ -260,7 +260,7 @@ function TariffSection() {
   async function handleAdd() {
     setFormError(null);
     setConfigError(null);
-    let config: object;
+    let config: Record<string, unknown>;
     try {
       config = JSON.parse(rawConfig);
     } catch {
